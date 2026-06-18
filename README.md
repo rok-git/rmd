@@ -16,13 +16,16 @@ List reminders:
 ```sh
 rmd list
 rmd list --list "Work"
+rmd list --yesterday
 rmd list --today
+rmd list --tomorrow
 rmd list --overdue
 rmd list --next 7
 rmd list --due-from "2026-06-18"
 rmd list --due-to "2026-06-30"
 rmd list --due-from "2026-06-18" --due-to "2026-06-30"
 rmd list --completed
+rmd list --completed --yesterday
 rmd list --completed --today
 rmd list --completed-from "2026-06-01" --completed-to "2026-06-18"
 rmd list --json
@@ -70,7 +73,9 @@ Mutation commands are quiet on success. Use `-v` or `--verbose` to print a
 confirmation, or `--json` to print the changed reminder as JSON.
 
 Date values use `yyyy-MM-dd` or `yyyy-MM-dd HH:mm`. A date-only upper bound,
-such as `--due-to "2026-06-30"`, includes the whole day.
+such as `--due-to "2026-06-30"`, includes the whole day. Relative filters like
+`--yesterday`, `--today`, and `--tomorrow` apply to due dates by default, and to
+completion dates when combined with `--completed`.
 
 If `rmd add` is run without `--list`, `RMD_DEFAULT_LIST` can select the target
 list:
@@ -91,6 +96,16 @@ Reminders.
 ```sh
 swift build
 ```
+
+Build an optimized binary and copy it to a directory on your `PATH`:
+
+```sh
+swift build -c release
+cp .build/release/rmd /usr/local/bin/rmd
+```
+
+Use a different destination, such as `~/bin/rmd`, if that is where you keep
+personal command line tools.
 
 Run during development:
 

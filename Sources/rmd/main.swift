@@ -74,7 +74,9 @@ struct ReminderListRecord: Encodable, Sendable {
 
 struct ListOptions {
     var listName: String?
+    var yesterday = false
     var today = false
+    var tomorrow = false
     var overdue = false
     var nextDays: Int?
     var dueFrom: Date?
@@ -396,8 +398,12 @@ func parseCommand(_ arguments: [String]) throws -> Command {
             switch argument {
             case "--list":
                 options.listName = try parser.requireValue(for: argument)
+            case "--yesterday":
+                options.yesterday = true
             case "--today":
                 options.today = true
+            case "--tomorrow":
+                options.tomorrow = true
             case "--overdue":
                 options.overdue = true
             case "--next":
@@ -660,8 +666,21 @@ func makeRelativeDateRange(_ options: ListOptions) -> (start: Date?, end: Date?)
     let now = Date()
     let startOfToday = calendar.startOfDay(for: now)
 
+    if options.yesterday {
+        return (
+            calendar.date(byAdding: .day, value: -1, to: startOfToday),
+            startOfToday
+        )
+    }
     if options.today {
         return (startOfToday, calendar.date(byAdding: .day, value: 1, to: startOfToday))
+    }
+    if options.tomorrow {
+        let startOfTomorrow = calendar.date(byAdding: .day, value: 1, to: startOfToday)
+        return (
+            startOfTomorrow,
+            startOfTomorrow.flatMap { calendar.date(byAdding: .day, value: 1, to: $0) }
+        )
     }
     if options.overdue {
         return (nil, startOfToday)
@@ -818,7 +837,7 @@ func shortID(_ identifier: String) -> String {
 func printHelp(to file: UnsafeMutablePointer<FILE> = stdout) {
     let text = """
     Usage:
-      rmd list [--list NAME] [--today | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--json]
+      rmd list [--list NAME] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--json]
       rmd show ID [--json]
       rmd add TITLE [--list NAME] [--due "yyyy-MM-dd HH:mm"] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
       rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]
