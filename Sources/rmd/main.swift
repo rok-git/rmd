@@ -8,6 +8,8 @@ enum CLIError: LocalizedError {
     case unexpectedArgument(String)
     case missingTitle
     case missingIdentifier
+    case identifierTooShort(String)
+    case ambiguousIdentifier(String, [ReminderRecord])
     case reminderNotFound(String)
     case listNotFound(String)
     case noDefaultReminderList
@@ -29,6 +31,14 @@ enum CLIError: LocalizedError {
             return "A reminder title is required."
         case .missingIdentifier:
             return "A reminder identifier is required."
+        case let .identifierTooShort(identifier):
+            return "Short reminder identifiers must be at least 4 characters: \(identifier)"
+        case let .ambiguousIdentifier(identifier, records):
+            let rows = records
+                .prefix(10)
+                .map { "  \(shortID($0.id))  \($0.title)" }
+                .joined(separator: "\n")
+            return "Ambiguous reminder identifier: \(identifier)\nMatches:\n\(rows)"
         case let .reminderNotFound(identifier):
             return "Reminder not found: \(identifier)"
         case let .listNotFound(name):
@@ -50,6 +60,7 @@ struct ReminderRecord: Encodable, Sendable {
     let title: String
     let list: String
     let due: String?
+    let completedAt: String?
     let completed: Bool
     let priority: Int
     let notes: String?
@@ -66,6 +77,11 @@ struct ListOptions {
     var today = false
     var overdue = false
     var nextDays: Int?
+    var dueFrom: Date?
+    var dueTo: Date?
+    var completed = false
+    var completedFrom: Date?
+    var completedTo: Date?
     var json = false
 }
 
@@ -76,6 +92,7 @@ struct AddOptions {
     var note: String?
     var priority: Int?
     var json = false
+    var verbose = false
 }
 
 struct EditOptions {
@@ -88,14 +105,16 @@ struct EditOptions {
     var clearNote = false
     var priority: Int?
     var json = false
+    var verbose = false
 }
 
 enum Command {
     case list(ListOptions)
+    case show(String, json: Bool)
     case add(AddOptions)
     case edit(EditOptions)
-    case done(String, json: Bool)
-    case undone(String, json: Bool)
+    case done(String, json: Bool, verbose: Bool)
+    case undone(String, json: Bool, verbose: Bool)
     case lists(json: Bool)
     case help
 }
@@ -117,18 +136,21 @@ struct RMD {
             case let .list(options):
                 let records = try await ReminderStore(eventStore: store).list(options)
                 printRecords(records, json: options.json)
+            case let .show(identifier, json):
+                let record = try await ReminderStore(eventStore: store).show(identifier: identifier)
+                printDetail(record, json: json)
             case let .add(options):
                 let record = try ReminderStore(eventStore: store).add(options)
-                printMutation(record, json: options.json)
+                printMutation(record, json: options.json, verbose: options.verbose)
             case let .edit(options):
-                let record = try ReminderStore(eventStore: store).edit(options)
-                printMutation(record, json: options.json)
-            case let .done(identifier, json):
-                let record = try ReminderStore(eventStore: store).setCompleted(true, identifier: identifier)
-                printMutation(record, json: json)
-            case let .undone(identifier, json):
-                let record = try ReminderStore(eventStore: store).setCompleted(false, identifier: identifier)
-                printMutation(record, json: json)
+                let record = try await ReminderStore(eventStore: store).edit(options)
+                printMutation(record, json: options.json, verbose: options.verbose)
+            case let .done(identifier, json, verbose):
+                let record = try await ReminderStore(eventStore: store).setCompleted(true, identifier: identifier)
+                printMutation(record, json: json, verbose: verbose)
+            case let .undone(identifier, json, verbose):
+                let record = try await ReminderStore(eventStore: store).setCompleted(false, identifier: identifier)
+                printMutation(record, json: json, verbose: verbose)
             case let .lists(json):
                 let records = ReminderStore(eventStore: store).lists()
                 printLists(records, json: json)
@@ -169,19 +191,34 @@ struct ReminderStore {
 
     func list(_ options: ListOptions) async throws -> [ReminderRecord] {
         let calendars = try selectedCalendars(named: options.listName)
-        let dateRange = makeDateRange(options)
-        let predicate = eventStore.predicateForIncompleteReminders(
-            withDueDateStarting: dateRange.start,
-            ending: dateRange.end,
-            calendars: calendars
-        )
+        let predicate: NSPredicate
+        if options.completed {
+            let completionRange = makeCompletionDateRange(options)
+            predicate = eventStore.predicateForCompletedReminders(
+                withCompletionDateStarting: completionRange.start,
+                ending: completionRange.end,
+                calendars: calendars
+            )
+        } else {
+            let dateRange = makeDueDateRange(options)
+            predicate = eventStore.predicateForIncompleteReminders(
+                withDueDateStarting: dateRange.start,
+                ending: dateRange.end,
+                calendars: calendars
+            )
+        }
         return try await reminderRecords(matching: predicate)
+    }
+
+    func show(identifier: String) async throws -> ReminderRecord {
+        let reminder = try await reminder(identifier: identifier)
+        return makeRecord(reminder)
     }
 
     func add(_ options: AddOptions) throws -> ReminderRecord {
         let reminder = EKReminder(eventStore: eventStore)
         reminder.title = options.title
-        reminder.calendar = try calendar(named: options.listName)
+        reminder.calendar = try calendar(named: options.listName ?? defaultListNameFromEnvironment())
         reminder.dueDateComponents = options.due
         reminder.notes = options.note
         if let priority = options.priority {
@@ -191,8 +228,8 @@ struct ReminderStore {
         return makeRecord(reminder)
     }
 
-    func edit(_ options: EditOptions) throws -> ReminderRecord {
-        let reminder = try reminder(identifier: options.identifier)
+    func edit(_ options: EditOptions) async throws -> ReminderRecord {
+        let reminder = try await reminder(identifier: options.identifier)
         if let title = options.title {
             reminder.title = title
         }
@@ -216,8 +253,8 @@ struct ReminderStore {
         return makeRecord(reminder)
     }
 
-    func setCompleted(_ completed: Bool, identifier: String) throws -> ReminderRecord {
-        let reminder = try reminder(identifier: identifier)
+    func setCompleted(_ completed: Bool, identifier: String) async throws -> ReminderRecord {
+        let reminder = try await reminder(identifier: identifier)
         reminder.isCompleted = completed
         if completed {
             reminder.completionDate = Date()
@@ -262,10 +299,16 @@ struct ReminderStore {
         }
     }
 
-    private func reminderRecords(matching predicate: NSPredicate) async throws -> [ReminderRecord] {
+    private func reminderRecords(matching predicate: NSPredicate, identifierPrefix: String? = nil) async throws -> [ReminderRecord] {
         try await withCheckedThrowingContinuation { continuation in
             eventStore.fetchReminders(matching: predicate) { reminders in
                 let records = (reminders ?? [])
+                    .filter { reminder in
+                        guard let identifierPrefix else {
+                            return true
+                        }
+                        return reminder.calendarItemIdentifier.lowercased().hasPrefix(identifierPrefix.lowercased())
+                    }
                     .sorted(by: compareReminders)
                     .map(makeRecord)
                 continuation.resume(returning: records)
@@ -293,8 +336,26 @@ struct ReminderStore {
         return calendar
     }
 
-    private func reminder(identifier: String) throws -> EKReminder {
-        guard let reminder = eventStore.calendarItem(withIdentifier: identifier) as? EKReminder else {
+    private func reminder(identifier: String) async throws -> EKReminder {
+        if let reminder = eventStore.calendarItem(withIdentifier: identifier) as? EKReminder {
+            return reminder
+        }
+
+        guard identifier.count >= 4 else {
+            throw CLIError.identifierTooShort(identifier)
+        }
+
+        let matches = try await reminderRecords(
+            matching: eventStore.predicateForReminders(in: nil),
+            identifierPrefix: identifier
+        )
+        guard let match = matches.first else {
+            throw CLIError.reminderNotFound(identifier)
+        }
+        guard matches.count == 1 else {
+            throw CLIError.ambiguousIdentifier(identifier, matches)
+        }
+        guard let reminder = eventStore.calendarItem(withIdentifier: match.id) as? EKReminder else {
             throw CLIError.reminderNotFound(identifier)
         }
         return reminder
@@ -314,6 +375,7 @@ struct ReminderStore {
             title: reminder.title,
             list: reminder.calendar.title,
             due: reminder.dueDateComponents.flatMap(formatDateComponents),
+            completedAt: reminder.completionDate.map(formatDate),
             completed: reminder.isCompleted,
             priority: reminder.priority,
             notes: reminder.notes
@@ -344,6 +406,18 @@ func parseCommand(_ arguments: [String]) throws -> Command {
                     throw CLIError.missingValue(argument)
                 }
                 options.nextDays = days
+            case "--due-from":
+                options.dueFrom = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: false)
+            case "--due-to":
+                options.dueTo = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: true)
+            case "--completed":
+                options.completed = true
+            case "--completed-from":
+                options.completed = true
+                options.completedFrom = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: false)
+            case "--completed-to":
+                options.completed = true
+                options.completedTo = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: true)
             case "--json":
                 options.json = true
             default:
@@ -351,6 +425,8 @@ func parseCommand(_ arguments: [String]) throws -> Command {
             }
         }
         return .list(options)
+    case "show":
+        return .show(try parseIdentifierAndJSON(&parser), json: parser.seenJSON)
     case "add":
         guard let title = parser.next(), !title.hasPrefix("--") else {
             throw CLIError.missingTitle
@@ -368,6 +444,8 @@ func parseCommand(_ arguments: [String]) throws -> Command {
                 options.priority = try parsePriority(try parser.requireValue(for: argument))
             case "--json":
                 options.json = true
+            case "-v", "--verbose":
+                options.verbose = true
             default:
                 throw CLIError.unexpectedArgument(argument)
             }
@@ -377,6 +455,7 @@ func parseCommand(_ arguments: [String]) throws -> Command {
         guard let identifier = parser.next(), !identifier.hasPrefix("--") else {
             throw CLIError.missingIdentifier
         }
+        try validateIdentifierInput(identifier)
         var options = EditOptions(identifier: identifier)
         while let argument = parser.next() {
             switch argument {
@@ -396,15 +475,17 @@ func parseCommand(_ arguments: [String]) throws -> Command {
                 options.priority = try parsePriority(try parser.requireValue(for: argument))
             case "--json":
                 options.json = true
+            case "-v", "--verbose":
+                options.verbose = true
             default:
                 throw CLIError.unexpectedArgument(argument)
             }
         }
         return .edit(options)
     case "done":
-        return .done(try parseIdentifierAndJSON(&parser), json: parser.seenJSON)
+        return .done(try parseIdentifierAndFlags(&parser), json: parser.seenJSON, verbose: parser.seenVerbose)
     case "undone":
-        return .undone(try parseIdentifierAndJSON(&parser), json: parser.seenJSON)
+        return .undone(try parseIdentifierAndFlags(&parser), json: parser.seenJSON, verbose: parser.seenVerbose)
     case "lists":
         var json = false
         while let argument = parser.next() {
@@ -427,6 +508,7 @@ struct ArgumentCursor {
     private let arguments: [String]
     private var index = 0
     var seenJSON = false
+    var seenVerbose = false
 
     init(_ arguments: [String]) {
         self.arguments = arguments
@@ -441,6 +523,9 @@ struct ArgumentCursor {
         if value == "--json" {
             seenJSON = true
         }
+        if value == "-v" || value == "--verbose" {
+            seenVerbose = true
+        }
         return value
     }
 
@@ -452,10 +537,27 @@ struct ArgumentCursor {
     }
 }
 
+func parseIdentifierAndFlags(_ parser: inout ArgumentCursor) throws -> String {
+    guard let identifier = parser.next(), !identifier.hasPrefix("--") else {
+        throw CLIError.missingIdentifier
+    }
+    try validateIdentifierInput(identifier)
+    while let argument = parser.next() {
+        switch argument {
+        case "--json", "-v", "--verbose":
+            continue
+        default:
+            throw CLIError.unexpectedArgument(argument)
+        }
+    }
+    return identifier
+}
+
 func parseIdentifierAndJSON(_ parser: inout ArgumentCursor) throws -> String {
     guard let identifier = parser.next(), !identifier.hasPrefix("--") else {
         throw CLIError.missingIdentifier
     }
+    try validateIdentifierInput(identifier)
     while let argument = parser.next() {
         switch argument {
         case "--json":
@@ -465,6 +567,20 @@ func parseIdentifierAndJSON(_ parser: inout ArgumentCursor) throws -> String {
         }
     }
     return identifier
+}
+
+func defaultListNameFromEnvironment() -> String? {
+    guard let value = ProcessInfo.processInfo.environment["RMD_DEFAULT_LIST"] else {
+        return nil
+    }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+func validateIdentifierInput(_ identifier: String) throws {
+    if identifier.count < 4 {
+        throw CLIError.identifierTooShort(identifier)
+    }
 }
 
 func parsePriority(_ value: String) throws -> Int {
@@ -512,7 +628,34 @@ enum DateParsers {
     }()
 }
 
-func makeDateRange(_ options: ListOptions) -> (start: Date?, end: Date?) {
+func parseDateBoundary(_ value: String, isEnd: Bool) throws -> Date {
+    if let date = DateParsers.dateTime.date(from: value) {
+        return date
+    }
+    if let date = DateParsers.dateOnly.date(from: value) {
+        if isEnd {
+            return Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
+        }
+        return date
+    }
+    throw CLIError.invalidDate(value)
+}
+
+func makeDueDateRange(_ options: ListOptions) -> (start: Date?, end: Date?) {
+    if options.dueFrom != nil || options.dueTo != nil {
+        return (options.dueFrom, options.dueTo)
+    }
+    return makeRelativeDateRange(options)
+}
+
+func makeCompletionDateRange(_ options: ListOptions) -> (start: Date?, end: Date?) {
+    if options.completedFrom != nil || options.completedTo != nil {
+        return (options.completedFrom, options.completedTo)
+    }
+    return makeRelativeDateRange(options)
+}
+
+func makeRelativeDateRange(_ options: ListOptions) -> (start: Date?, end: Date?) {
     let calendar = Calendar.current
     let now = Date()
     let startOfToday = calendar.startOfDay(for: now)
@@ -530,6 +673,21 @@ func makeDateRange(_ options: ListOptions) -> (start: Date?, end: Date?) {
 }
 
 func compareReminders(_ lhs: EKReminder, _ rhs: EKReminder) -> Bool {
+    if lhs.isCompleted || rhs.isCompleted {
+        switch (lhs.completionDate, rhs.completionDate) {
+        case let (left?, right?):
+            if left != right {
+                return left > right
+            }
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            break
+        }
+    }
+
     switch (lhs.dueDateComponents?.date, rhs.dueDateComponents?.date) {
     case let (left?, right?):
         if left != right {
@@ -555,6 +713,10 @@ func formatDateComponents(_ components: DateComponents) -> String {
     return ""
 }
 
+func formatDate(_ date: Date) -> String {
+    DateParsers.outputDateTime.string(from: date)
+}
+
 func printRecords(_ records: [ReminderRecord], json: Bool) {
     if json {
         printJSON(records)
@@ -564,10 +726,17 @@ func printRecords(_ records: [ReminderRecord], json: Bool) {
         print("No reminders.")
         return
     }
-    printTable(
-        headers: ["ID", "Due", "List", "Pri", "Title"],
-        rows: records.map { [shortID($0.id), $0.due ?? "-", $0.list, String($0.priority), $0.title] }
-    )
+    if records.contains(where: \.completed) {
+        printTable(
+            headers: ["ID", "Completed", "Due", "List", "Pri", "Title"],
+            rows: records.map { [shortID($0.id), $0.completedAt ?? "-", $0.due ?? "-", $0.list, String($0.priority), $0.title] }
+        )
+    } else {
+        printTable(
+            headers: ["ID", "Due", "List", "Pri", "Title"],
+            rows: records.map { [shortID($0.id), $0.due ?? "-", $0.list, String($0.priority), $0.title] }
+        )
+    }
 }
 
 func printLists(_ records: [ReminderListRecord], json: Bool) {
@@ -585,9 +754,36 @@ func printLists(_ records: [ReminderListRecord], json: Bool) {
     )
 }
 
-func printMutation(_ record: ReminderRecord, json: Bool) {
+func printDetail(_ record: ReminderRecord, json: Bool) {
     if json {
         printJSON(record)
+        return
+    }
+
+    print("Title: \(record.title)")
+    print("ID: \(record.id)")
+    print("List: \(record.list)")
+    print("Due: \(record.due ?? "-")")
+    print("Completed: \(record.completed ? "yes" : "no")")
+    if let completedAt = record.completedAt {
+        print("Completed at: \(completedAt)")
+    }
+    print("Priority: \(record.priority)")
+    print("")
+    print("Note:")
+    if let notes = record.notes, !notes.isEmpty {
+        print(notes)
+    } else {
+        print("-")
+    }
+}
+
+func printMutation(_ record: ReminderRecord, json: Bool, verbose: Bool) {
+    if json {
+        printJSON(record)
+        return
+    }
+    guard verbose else {
         return
     }
     let status = record.completed ? "completed" : "saved"
@@ -622,11 +818,12 @@ func shortID(_ identifier: String) -> String {
 func printHelp(to file: UnsafeMutablePointer<FILE> = stdout) {
     let text = """
     Usage:
-      rmd list [--list NAME] [--today | --overdue | --next DAYS] [--json]
-      rmd add TITLE [--list NAME] [--due "yyyy-MM-dd HH:mm"] [--note TEXT] [--priority 0-9] [--json]
-      rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json]
-      rmd done ID [--json]
-      rmd undone ID [--json]
+      rmd list [--list NAME] [--today | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--json]
+      rmd show ID [--json]
+      rmd add TITLE [--list NAME] [--due "yyyy-MM-dd HH:mm"] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
+      rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]
+      rmd done ID [--json] [-v|--verbose]
+      rmd undone ID [--json] [-v|--verbose]
       rmd lists [--json]
       rmd help
     """
