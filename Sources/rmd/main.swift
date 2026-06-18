@@ -115,6 +115,7 @@ enum Command {
     case show(String, json: Bool)
     case add(AddOptions)
     case edit(EditOptions)
+    case delete([String], json: Bool, verbose: Bool)
     case done(String, json: Bool, verbose: Bool)
     case undone(String, json: Bool, verbose: Bool)
     case lists(json: Bool)
@@ -147,6 +148,16 @@ struct RMD {
             case let .edit(options):
                 let record = try await ReminderStore(eventStore: store).edit(options)
                 printMutation(record, json: options.json, verbose: options.verbose)
+            case let .delete(identifiers, json, verbose):
+                let reminders = try await ReminderStore(eventStore: store).reminders(identifiers: identifiers)
+                var deletedRecords: [ReminderRecord] = []
+                for reminder in reminders {
+                    let record = ReminderStore(eventStore: store).record(for: reminder)
+                    if confirmDeletion(record) {
+                        deletedRecords.append(try ReminderStore(eventStore: store).delete(reminder))
+                    }
+                }
+                printDeleted(deletedRecords, json: json, verbose: verbose)
             case let .done(identifier, json, verbose):
                 let record = try await ReminderStore(eventStore: store).setCompleted(true, identifier: identifier)
                 printMutation(record, json: json, verbose: verbose)
@@ -265,6 +276,34 @@ struct ReminderStore {
         }
         try save(reminder)
         return makeRecord(reminder)
+    }
+
+    func reminders(identifiers: [String]) async throws -> [EKReminder] {
+        var seenIDs = Set<String>()
+        var resolved: [EKReminder] = []
+        for identifier in identifiers {
+            let reminder = try await reminder(identifier: identifier)
+            guard !seenIDs.contains(reminder.calendarItemIdentifier) else {
+                continue
+            }
+            seenIDs.insert(reminder.calendarItemIdentifier)
+            resolved.append(reminder)
+        }
+        return resolved
+    }
+
+    func delete(_ reminder: EKReminder) throws -> ReminderRecord {
+        let record = makeRecord(reminder)
+        do {
+            try eventStore.remove(reminder, commit: true)
+        } catch {
+            throw CLIError.eventKit(error.localizedDescription)
+        }
+        return record
+    }
+
+    func record(for reminder: EKReminder) -> ReminderRecord {
+        makeRecord(reminder)
     }
 
     func lists() -> [ReminderListRecord] {
@@ -488,6 +527,8 @@ func parseCommand(_ arguments: [String]) throws -> Command {
             }
         }
         return .edit(options)
+    case "delete":
+        return .delete(try parseIdentifiersAndFlags(&parser), json: parser.seenJSON, verbose: parser.seenVerbose)
     case "done":
         return .done(try parseIdentifierAndFlags(&parser), json: parser.seenJSON, verbose: parser.seenVerbose)
     case "undone":
@@ -557,6 +598,26 @@ func parseIdentifierAndFlags(_ parser: inout ArgumentCursor) throws -> String {
         }
     }
     return identifier
+}
+
+func parseIdentifiersAndFlags(_ parser: inout ArgumentCursor) throws -> [String] {
+    var identifiers: [String] = []
+    while let argument = parser.next() {
+        switch argument {
+        case "--json", "-v", "--verbose":
+            continue
+        default:
+            if argument.hasPrefix("--") {
+                throw CLIError.unexpectedArgument(argument)
+            }
+            try validateIdentifierInput(argument)
+            identifiers.append(argument)
+        }
+    }
+    guard !identifiers.isEmpty else {
+        throw CLIError.missingIdentifier
+    }
+    return identifiers
 }
 
 func parseIdentifierAndJSON(_ parser: inout ArgumentCursor) throws -> String {
@@ -810,6 +871,29 @@ func printMutation(_ record: ReminderRecord, json: Bool, verbose: Bool) {
     print("id: \(record.id)")
 }
 
+func printDeleted(_ records: [ReminderRecord], json: Bool, verbose: Bool) {
+    if json {
+        printJSON(records)
+        return
+    }
+    guard verbose else {
+        return
+    }
+    for record in records {
+        print("deleted: \(record.title)")
+        print("id: \(record.id)")
+    }
+}
+
+func confirmDeletion(_ record: ReminderRecord) -> Bool {
+    fputs("Delete \(shortID(record.id)) \"\(record.title)\"? [y/N] ", stderr)
+    guard let answer = readLine() else {
+        return false
+    }
+    let normalized = answer.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return normalized == "y" || normalized == "yes"
+}
+
 func printJSON<T: Encodable>(_ value: T) {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -841,6 +925,7 @@ func printHelp(to file: UnsafeMutablePointer<FILE> = stdout) {
       rmd show ID [--json]
       rmd add TITLE [--list NAME] [--due "yyyy-MM-dd HH:mm"] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
       rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]
+      rmd delete ID... [--json] [-v|--verbose]
       rmd done ID [--json] [-v|--verbose]
       rmd undone ID [--json] [-v|--verbose]
       rmd lists [--json]

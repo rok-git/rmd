@@ -50,9 +50,13 @@ rmd edit <reminder-id> --due "2026-06-19 09:00"
 rmd edit <reminder-id> --clear-due
 ```
 
-Complete or reopen reminders:
+Delete, complete, or reopen reminders:
 
 ```sh
+rmd delete <reminder-id>
+rmd delete <reminder-id> <reminder-id>
+rmd delete <reminder-id> --verbose
+
 rmd done <reminder-id>
 rmd done <reminder-id> --verbose
 rmd undone <reminder-id>
@@ -71,6 +75,9 @@ prefixes with at least 4 characters when they uniquely identify one reminder.
 
 Mutation commands are quiet on success. Use `-v` or `--verbose` to print a
 confirmation, or `--json` to print the changed reminder as JSON.
+
+`delete` accepts one or more reminder IDs and asks for confirmation before each
+reminder is removed. Answer `y` or `yes` to delete; any other answer skips it.
 
 Date values use `yyyy-MM-dd` or `yyyy-MM-dd HH:mm`. A date-only upper bound,
 such as `--due-to "2026-06-30"`, includes the whole day. Relative filters like
@@ -94,21 +101,32 @@ Reminders.
 ## Build
 
 ```sh
-swift build
+make
 ```
 
 Build an optimized binary and copy it to a directory on your `PATH`:
 
 ```sh
-swift build -c release
-cp .build/release/rmd /usr/local/bin/rmd
+make release
+make install
 ```
 
 Use a different destination, such as `~/bin/rmd`, if that is where you keep
-personal command line tools.
+personal command line tools:
+
+```sh
+make install PREFIX="$HOME"
+```
+
+You can still call SwiftPM directly:
+
+```sh
+swift build
+swift build -c release
+```
 
 Run during development:
 
 ```sh
-swift run rmd lists
+make run
 ```
