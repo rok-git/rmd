@@ -14,6 +14,7 @@ enum CLIError: LocalizedError {
     case listNotFound(String)
     case noDefaultReminderList
     case invalidDate(String)
+    case invalidLimit(String)
     case accessDenied(String)
     case eventKit(String)
 
@@ -47,6 +48,8 @@ enum CLIError: LocalizedError {
             return "No default reminder list is configured."
         case let .invalidDate(value):
             return "Invalid date: \(value). Use yyyy-MM-dd or yyyy-MM-dd HH:mm."
+        case let .invalidLimit(value):
+            return "Invalid limit: \(value). Use a positive integer."
         case let .accessDenied(reason):
             return reason
         case let .eventKit(message):
@@ -84,6 +87,7 @@ struct ListOptions {
     var completed = false
     var completedFrom: Date?
     var completedTo: Date?
+    var limit: Int?
     var json = false
 }
 
@@ -220,7 +224,11 @@ struct ReminderStore {
                 calendars: calendars
             )
         }
-        return try await reminderRecords(matching: predicate)
+        let records = try await reminderRecords(matching: predicate)
+        if let limit = options.limit {
+            return Array(records.prefix(limit))
+        }
+        return records
     }
 
     func show(identifier: String) async throws -> ReminderRecord {
@@ -451,6 +459,8 @@ func parseCommand(_ arguments: [String]) throws -> Command {
                     throw CLIError.missingValue(argument)
                 }
                 options.nextDays = days
+            case "--limit":
+                options.limit = try parseLimit(try parser.requireValue(for: argument))
             case "--due-from":
                 options.dueFrom = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: false)
             case "--due-to":
@@ -655,6 +665,13 @@ func parsePriority(_ value: String) throws -> Int {
         throw CLIError.missingValue("--priority")
     }
     return priority
+}
+
+func parseLimit(_ value: String) throws -> Int {
+    guard let limit = Int(value), limit > 0 else {
+        throw CLIError.invalidLimit(value)
+    }
+    return limit
 }
 
 func parseDateComponents(_ value: String) throws -> DateComponents {
@@ -921,7 +938,7 @@ func shortID(_ identifier: String) -> String {
 func printHelp(to file: UnsafeMutablePointer<FILE> = stdout) {
     let text = """
     Usage:
-      rmd list [--list NAME] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--json]
+      rmd list [--list NAME] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--limit COUNT] [--json]
       rmd show ID [--json]
       rmd add TITLE [--list NAME] [--due "yyyy-MM-dd HH:mm"] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
       rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]

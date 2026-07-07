@@ -28,6 +28,7 @@ rmd list --completed
 rmd list --completed --yesterday
 rmd list --completed --today
 rmd list --completed-from "2026-06-01" --completed-to "2026-06-18"
+rmd list --limit 10
 rmd list --json
 ```
 
@@ -83,6 +84,9 @@ Date values use `yyyy-MM-dd` or `yyyy-MM-dd HH:mm`. A date-only upper bound,
 such as `--due-to "2026-06-30"`, includes the whole day. Relative filters like
 `--yesterday`, `--today`, and `--tomorrow` apply to due dates by default, and to
 completion dates when combined with `--completed`.
+
+Use `--limit COUNT` to print only the first COUNT reminders after filtering and
+sorting.
 
 If `rmd add` is run without `--list`, `RMD_DEFAULT_LIST` can select the target
 list:

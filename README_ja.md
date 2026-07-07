@@ -27,6 +27,7 @@ rmd list --completed
 rmd list --completed --yesterday
 rmd list --completed --today
 rmd list --completed-from "2026-06-01" --completed-to "2026-06-18"
+rmd list --limit 10
 rmd list --json
 ```
 
@@ -94,6 +95,8 @@ JSON で受け取りたい場合は `--json` を使います。
 `--yesterday`、`--today`、`--tomorrow` のような相対日付指定は、通常は期限に
 対して効きます。`--completed --today` のように完了済み表示と組み合わせると、
 期限ではなく完了日時に対して絞り込みます。
+
+`--limit 件数` を指定すると、絞り込みと並び替えの後、先頭の件数だけを表示します。
 
 ## デフォルトリスト
 
