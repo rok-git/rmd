@@ -16,6 +16,7 @@ List reminders:
 ```sh
 rmd list
 rmd list --list "Work"
+rmd list --list "Work" --list "Shopping"
 rmd list --yesterday
 rmd list --today
 rmd list --tomorrow
@@ -87,6 +88,9 @@ completion dates when combined with `--completed`.
 
 Use `--limit COUNT` to print only the first COUNT reminders after filtering and
 sorting.
+
+By default, `rmd list` searches all reminder lists. Repeat `--list NAME` to
+limit output to multiple specific lists.
 
 If `rmd add` is run without `--list`, `RMD_DEFAULT_LIST` can select the target
 list:

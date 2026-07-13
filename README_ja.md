@@ -15,6 +15,7 @@ Swift 製の小さなコマンドラインツールです。
 ```sh
 rmd list
 rmd list --list "仕事"
+rmd list --list "仕事" --list "買い物"
 rmd list --yesterday
 rmd list --today
 rmd list --tomorrow
@@ -97,6 +98,9 @@ JSON で受け取りたい場合は `--json` を使います。
 期限ではなく完了日時に対して絞り込みます。
 
 `--limit 件数` を指定すると、絞り込みと並び替えの後、先頭の件数だけを表示します。
+
+`rmd list` は、`--list` を指定しない場合は全リストを対象にします。複数のリストに
+絞り込む場合は、`--list リスト名` を繰り返し指定します。
 
 ## デフォルトリスト
 

@@ -76,7 +76,7 @@ struct ReminderListRecord: Encodable, Sendable {
 }
 
 struct ListOptions {
-    var listName: String?
+    var listNames: [String] = []
     var yesterday = false
     var today = false
     var tomorrow = false
@@ -207,7 +207,7 @@ struct ReminderStore {
     }
 
     func list(_ options: ListOptions) async throws -> [ReminderRecord] {
-        let calendars = try selectedCalendars(named: options.listName)
+        let calendars = try selectedCalendars(named: options.listNames)
         let predicate: NSPredicate
         if options.completed {
             let completionRange = makeCompletionDateRange(options)
@@ -365,11 +365,19 @@ struct ReminderStore {
         }
     }
 
-    private func selectedCalendars(named name: String?) throws -> [EKCalendar]? {
-        guard let name else {
+    private func selectedCalendars(named names: [String]) throws -> [EKCalendar]? {
+        guard !names.isEmpty else {
             return nil
         }
-        return [try calendar(named: name)]
+
+        var calendars: [EKCalendar] = []
+        for name in names {
+            let calendar = try calendar(named: name)
+            if !calendars.contains(where: { $0.calendarIdentifier == calendar.calendarIdentifier }) {
+                calendars.append(calendar)
+            }
+        }
+        return calendars
     }
 
     private func calendar(named name: String?) throws -> EKCalendar {
@@ -444,7 +452,7 @@ func parseCommand(_ arguments: [String]) throws -> Command {
         while let argument = parser.next() {
             switch argument {
             case "--list":
-                options.listName = try parser.requireValue(for: argument)
+                options.listNames.append(try parser.requireValue(for: argument))
             case "--yesterday":
                 options.yesterday = true
             case "--today":
@@ -938,7 +946,7 @@ func shortID(_ identifier: String) -> String {
 func printHelp(to file: UnsafeMutablePointer<FILE> = stdout) {
     let text = """
     Usage:
-      rmd list [--list NAME] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--limit COUNT] [--json]
+      rmd list [--list NAME ...] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--limit COUNT] [--json]
       rmd show ID [--json]
       rmd add TITLE [--list NAME] [--due "yyyy-MM-dd HH:mm"] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
       rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]
