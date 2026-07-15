@@ -30,6 +30,7 @@ rmd list --completed --yesterday
 rmd list --completed --today
 rmd list --completed-from "2026-06-01" --completed-to "2026-06-18"
 rmd list --limit 10
+rmd list --no-header
 rmd list --json
 ```
 
@@ -68,6 +69,7 @@ List reminder lists:
 
 ```sh
 rmd lists
+rmd lists --no-header
 rmd lists --json
 ```
 
@@ -77,6 +79,9 @@ prefixes with at least 4 characters when they uniquely identify one reminder.
 
 Mutation commands are quiet on success. Use `-v` or `--verbose` to print a
 confirmation, or `--json` to print the changed reminder as JSON.
+
+Use `--no-header` with `list` or `lists` to omit the table header and separator
+line from human-readable output.
 
 `delete` accepts one or more reminder IDs and asks for confirmation before each
 reminder is removed. Answer `y` or `yes` to delete; any other answer skips it.

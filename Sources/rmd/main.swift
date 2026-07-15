@@ -89,6 +89,7 @@ struct ListOptions {
     var completedTo: Date?
     var limit: Int?
     var json = false
+    var noHeader = false
 }
 
 struct AddOptions {
@@ -122,7 +123,7 @@ enum Command {
     case delete([String], json: Bool, verbose: Bool)
     case done(String, json: Bool, verbose: Bool)
     case undone(String, json: Bool, verbose: Bool)
-    case lists(json: Bool)
+    case lists(json: Bool, noHeader: Bool)
     case help
 }
 
@@ -142,7 +143,7 @@ struct RMD {
             switch command {
             case let .list(options):
                 let records = try await ReminderStore(eventStore: store).list(options)
-                printRecords(records, json: options.json)
+                printRecords(records, json: options.json, noHeader: options.noHeader)
             case let .show(identifier, json):
                 let record = try await ReminderStore(eventStore: store).show(identifier: identifier)
                 printDetail(record, json: json)
@@ -168,9 +169,9 @@ struct RMD {
             case let .undone(identifier, json, verbose):
                 let record = try await ReminderStore(eventStore: store).setCompleted(false, identifier: identifier)
                 printMutation(record, json: json, verbose: verbose)
-            case let .lists(json):
+            case let .lists(json, noHeader):
                 let records = ReminderStore(eventStore: store).lists()
-                printLists(records, json: json)
+                printLists(records, json: json, noHeader: noHeader)
             case .help:
                 break
             }
@@ -483,6 +484,8 @@ func parseCommand(_ arguments: [String]) throws -> Command {
                 options.completedTo = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: true)
             case "--json":
                 options.json = true
+            case "--no-header":
+                options.noHeader = true
             default:
                 throw CLIError.unexpectedArgument(argument)
             }
@@ -553,15 +556,18 @@ func parseCommand(_ arguments: [String]) throws -> Command {
         return .undone(try parseIdentifierAndFlags(&parser), json: parser.seenJSON, verbose: parser.seenVerbose)
     case "lists":
         var json = false
+        var noHeader = false
         while let argument = parser.next() {
             switch argument {
             case "--json":
                 json = true
+            case "--no-header":
+                noHeader = true
             default:
                 throw CLIError.unexpectedArgument(argument)
             }
         }
-        return .lists(json: json)
+        return .lists(json: json, noHeader: noHeader)
     case "help", "--help", "-h":
         return .help
     default:
@@ -844,7 +850,7 @@ func formatDate(_ date: Date) -> String {
     DateParsers.outputDateTime.string(from: date)
 }
 
-func printRecords(_ records: [ReminderRecord], json: Bool) {
+func printRecords(_ records: [ReminderRecord], json: Bool, noHeader: Bool) {
     if json {
         printJSON(records)
         return
@@ -856,17 +862,19 @@ func printRecords(_ records: [ReminderRecord], json: Bool) {
     if records.contains(where: \.completed) {
         printTable(
             headers: ["ID", "Completed", "Due", "List", "Pri", "Title"],
-            rows: records.map { [shortID($0.id), $0.completedAt ?? "-", $0.due ?? "-", $0.list, String($0.priority), $0.title] }
+            rows: records.map { [shortID($0.id), $0.completedAt ?? "-", $0.due ?? "-", $0.list, String($0.priority), $0.title] },
+            includeHeader: !noHeader
         )
     } else {
         printTable(
             headers: ["ID", "Due", "List", "Pri", "Title"],
-            rows: records.map { [shortID($0.id), $0.due ?? "-", $0.list, String($0.priority), $0.title] }
+            rows: records.map { [shortID($0.id), $0.due ?? "-", $0.list, String($0.priority), $0.title] },
+            includeHeader: !noHeader
         )
     }
 }
 
-func printLists(_ records: [ReminderListRecord], json: Bool) {
+func printLists(_ records: [ReminderListRecord], json: Bool, noHeader: Bool) {
     if json {
         printJSON(records)
         return
@@ -877,7 +885,8 @@ func printLists(_ records: [ReminderListRecord], json: Bool) {
     }
     printTable(
         headers: ["ID", "Writable", "Title"],
-        rows: records.map { [shortID($0.id), $0.allowsContentModifications ? "yes" : "no", $0.title] }
+        rows: records.map { [shortID($0.id), $0.allowsContentModifications ? "yes" : "no", $0.title] },
+        includeHeader: !noHeader
     )
 }
 
@@ -949,13 +958,16 @@ func printJSON<T: Encodable>(_ value: T) {
     }
 }
 
-func printTable(headers: [String], rows: [[String]]) {
+func printTable(headers: [String], rows: [[String]], includeHeader: Bool = true) {
     let widths = headers.indices.map { index in
-        ([headers[index]] + rows.map { $0[index] }).map(\.count).max() ?? 0
+        let headerValues = includeHeader ? [headers[index]] : []
+        return (headerValues + rows.map { $0[index] }).map(\.count).max() ?? 0
     }
-    let header = headers.indices.map { headers[$0].padding(toLength: widths[$0], withPad: " ", startingAt: 0) }.joined(separator: "  ")
-    print(header)
-    print(widths.map { String(repeating: "-", count: $0) }.joined(separator: "  "))
+    if includeHeader {
+        let header = headers.indices.map { headers[$0].padding(toLength: widths[$0], withPad: " ", startingAt: 0) }.joined(separator: "  ")
+        print(header)
+        print(widths.map { String(repeating: "-", count: $0) }.joined(separator: "  "))
+    }
     for row in rows {
         print(row.indices.map { row[$0].padding(toLength: widths[$0], withPad: " ", startingAt: 0) }.joined(separator: "  "))
     }
@@ -968,14 +980,14 @@ func shortID(_ identifier: String) -> String {
 func printHelp(to file: UnsafeMutablePointer<FILE> = stdout) {
     let text = """
     Usage:
-      rmd list [--list NAME ...] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--limit COUNT] [--json]
+      rmd list [--list NAME ...] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--limit COUNT] [--no-header] [--json]
       rmd show ID [--json]
       rmd add TITLE [--list NAME] [--due DATE] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
       rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]
       rmd delete ID... [--json] [-v|--verbose]
       rmd done ID [--json] [-v|--verbose]
       rmd undone ID [--json] [-v|--verbose]
-      rmd lists [--json]
+      rmd lists [--no-header] [--json]
       rmd help
     """
     fputs(text + "\n", file)

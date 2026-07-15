@@ -29,6 +29,7 @@ rmd list --completed --yesterday
 rmd list --completed --today
 rmd list --completed-from "2026-06-01" --completed-to "2026-06-18"
 rmd list --limit 10
+rmd list --no-header
 rmd list --json
 ```
 
@@ -67,6 +68,7 @@ rmd undone <reminder-id>
 
 ```sh
 rmd lists
+rmd lists --no-header
 rmd lists --json
 ```
 
@@ -82,6 +84,9 @@ rmd lists --json
 `add`、`edit`、`done`、`undone` は、成功時には何も表示しません。確認メッセージが
 必要な場合は `-v` または `--verbose` を指定してください。変更後のリマインダーを
 JSON で受け取りたい場合は `--json` を使います。
+
+`list` または `lists` に `--no-header` を指定すると、人間向けの表形式出力から
+ヘッダ行と区切り線を省きます。
 
 `delete` は 1 件以上の ID を受け取り、削除前に 1 件ずつ確認します。
 `y` または `yes` と入力した場合だけ削除し、それ以外の入力ではスキップします。
