@@ -138,3 +138,7 @@ Run during development:
 ```sh
 make run
 ```
+
+## License
+
+MIT License. See [LICENSE](LICENSE).

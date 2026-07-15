@@ -156,3 +156,7 @@ swift build -c release
 ```sh
 make run
 ```
+
+## ライセンス
+
+MIT License です。詳細は [LICENSE](LICENSE) を参照してください。
