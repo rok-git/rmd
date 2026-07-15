@@ -47,7 +47,7 @@ enum CLIError: LocalizedError {
         case .noDefaultReminderList:
             return "No default reminder list is configured."
         case let .invalidDate(value):
-            return "Invalid date: \(value). Use yyyy-MM-dd or yyyy-MM-dd HH:mm."
+            return "Invalid date: \(value). Use yyyy-MM-dd, yyyy-MM-dd HH:mm, yyyy年M月d日, or 令和y年M月d日."
         case let .invalidLimit(value):
             return "Invalid limit: \(value). Use a positive integer."
         case let .accessDenied(reason):
@@ -684,11 +684,11 @@ func parseLimit(_ value: String) throws -> Int {
 
 func parseDateComponents(_ value: String) throws -> DateComponents {
     let calendar = Calendar.current
-    if let date = DateParsers.dateTime.date(from: value) {
-        return calendar.dateComponents([.calendar, .timeZone, .year, .month, .day, .hour, .minute], from: date)
-    }
-    if let date = DateParsers.dateOnly.date(from: value) {
-        var components = calendar.dateComponents([.calendar, .timeZone, .year, .month, .day], from: date)
+    if let parsedDate = DateParsers.parse(value) {
+        if parsedDate.includesTime {
+            return calendar.dateComponents([.calendar, .timeZone, .year, .month, .day, .hour, .minute], from: parsedDate.date)
+        }
+        var components = calendar.dateComponents([.calendar, .timeZone, .year, .month, .day], from: parsedDate.date)
         components.isLeapMonth = false
         return components
     }
@@ -696,21 +696,46 @@ func parseDateComponents(_ value: String) throws -> DateComponents {
 }
 
 enum DateParsers {
-    static let dateTime: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        return formatter
-    }()
+    struct ParsedDate {
+        let date: Date
+        let includesTime: Bool
+    }
 
-    static let dateOnly: DateFormatter = {
+    static func parse(_ value: String) -> ParsedDate? {
+        for formatter in dateTimeFormatters {
+            if let date = formatter.date(from: value) {
+                return ParsedDate(date: date, includesTime: true)
+            }
+        }
+        for formatter in dateOnlyFormatters {
+            if let date = formatter.date(from: value) {
+                return ParsedDate(date: date, includesTime: false)
+            }
+        }
+        return nil
+    }
+
+    private static let dateTimeFormatters: [DateFormatter] = [
+        makeFormatter(locale: Locale(identifier: "en_US_POSIX"), calendar: Calendar(identifier: .gregorian), dateFormat: "yyyy-MM-dd HH:mm"),
+        makeFormatter(locale: Locale(identifier: "ja_JP"), calendar: Calendar(identifier: .gregorian), dateFormat: "yyyy年M月d日 HH:mm"),
+        makeFormatter(locale: Locale(identifier: "ja_JP"), calendar: Calendar(identifier: .japanese), dateFormat: "GGGGy年M月d日 HH:mm"),
+    ]
+
+    private static let dateOnlyFormatters: [DateFormatter] = [
+        makeFormatter(locale: Locale(identifier: "en_US_POSIX"), calendar: Calendar(identifier: .gregorian), dateFormat: "yyyy-MM-dd"),
+        makeFormatter(locale: Locale(identifier: "ja_JP"), calendar: Calendar(identifier: .gregorian), dateFormat: "yyyy年M月d日"),
+        makeFormatter(locale: Locale(identifier: "ja_JP"), calendar: Calendar(identifier: .japanese), dateFormat: "GGGGy年M月d日"),
+    ]
+
+    private static func makeFormatter(locale: Locale, calendar: Calendar, dateFormat: String) -> DateFormatter {
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = locale
+        formatter.calendar = calendar
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = dateFormat
+        formatter.isLenient = false
         return formatter
-    }()
+    }
 
     static let outputDateTime: DateFormatter = {
         let formatter = DateFormatter()
@@ -721,14 +746,11 @@ enum DateParsers {
 }
 
 func parseDateBoundary(_ value: String, isEnd: Bool) throws -> Date {
-    if let date = DateParsers.dateTime.date(from: value) {
-        return date
-    }
-    if let date = DateParsers.dateOnly.date(from: value) {
-        if isEnd {
-            return Calendar.current.date(byAdding: .day, value: 1, to: date) ?? date
+    if let parsedDate = DateParsers.parse(value) {
+        if isEnd && !parsedDate.includesTime {
+            return Calendar.current.date(byAdding: .day, value: 1, to: parsedDate.date) ?? parsedDate.date
         }
-        return date
+        return parsedDate.date
     }
     throw CLIError.invalidDate(value)
 }
@@ -948,7 +970,7 @@ func printHelp(to file: UnsafeMutablePointer<FILE> = stdout) {
     Usage:
       rmd list [--list NAME ...] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--limit COUNT] [--json]
       rmd show ID [--json]
-      rmd add TITLE [--list NAME] [--due "yyyy-MM-dd HH:mm"] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
+      rmd add TITLE [--list NAME] [--due DATE] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
       rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]
       rmd delete ID... [--json] [-v|--verbose]
       rmd done ID [--json] [-v|--verbose]

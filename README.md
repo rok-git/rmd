@@ -81,8 +81,11 @@ confirmation, or `--json` to print the changed reminder as JSON.
 `delete` accepts one or more reminder IDs and asks for confirmation before each
 reminder is removed. Answer `y` or `yes` to delete; any other answer skips it.
 
-Date values use `yyyy-MM-dd` or `yyyy-MM-dd HH:mm`. A date-only upper bound,
-such as `--due-to "2026-06-30"`, includes the whole day. Relative filters like
+Date values use `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, `yyyy年M月d日`,
+`yyyy年M月d日 HH:mm`, `令和y年M月d日`, or `令和y年M月d日 HH:mm`. Era names
+supported by the Japanese calendar, such as `平成` and `昭和`, are also accepted.
+A date-only upper bound, such as `--due-to "2026-06-30"` or
+`--due-to "令和8年6月30日"`, includes the whole day. Relative filters like
 `--yesterday`, `--today`, and `--tomorrow` apply to due dates by default, and to
 completion dates when combined with `--completed`.
 
