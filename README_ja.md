@@ -24,10 +24,10 @@ rmd list --next 7
 rmd list --due-from "2026-06-18"
 rmd list --due-to "2026-06-30"
 rmd list --due-from "2026-06-18" --due-to "2026-06-30"
-rmd list --completed
-rmd list --completed --yesterday
-rmd list --completed --today
-rmd list --completed-from "2026-06-01" --completed-to "2026-06-18"
+rmd list --done
+rmd list --done --yesterday
+rmd list --done --today
+rmd list --done-from "2026-06-01" --done-to "2026-06-18"
 rmd list --limit 10
 rmd list --no-header
 rmd list --json
@@ -102,8 +102,10 @@ JSON で受け取りたい場合は `--json` を使います。
 ような和暦の日付だけの指定でも同じです。
 
 `--yesterday`、`--today`、`--tomorrow` のような相対日付指定は、通常は期限に
-対して効きます。`--completed --today` のように完了済み表示と組み合わせると、
-期限ではなく完了日時に対して絞り込みます。
+対して効きます。`--done --today` のように完了済み表示と組み合わせると、
+期限ではなく完了日時に対して絞り込みます。`--completed`、`--completed-from`、
+`--completed-to` は、それぞれ `--done`、`--done-from`、`--done-to` の別名として
+引き続き使えます。
 
 `--limit 件数` を指定すると、絞り込みと並び替えの後、先頭の件数だけを表示します。
 

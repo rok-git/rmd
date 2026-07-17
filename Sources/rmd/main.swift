@@ -474,12 +474,12 @@ func parseCommand(_ arguments: [String]) throws -> Command {
                 options.dueFrom = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: false)
             case "--due-to":
                 options.dueTo = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: true)
-            case "--completed":
+            case "--completed", "--done":
                 options.completed = true
-            case "--completed-from":
+            case "--completed-from", "--done-from":
                 options.completed = true
                 options.completedFrom = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: false)
-            case "--completed-to":
+            case "--completed-to", "--done-to":
                 options.completed = true
                 options.completedTo = try parseDateBoundary(try parser.requireValue(for: argument), isEnd: true)
             case "--json":
@@ -980,7 +980,7 @@ func shortID(_ identifier: String) -> String {
 func printHelp(to file: UnsafeMutablePointer<FILE> = stdout) {
     let text = """
     Usage:
-      rmd list [--list NAME ...] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed] [--completed-from DATE] [--completed-to DATE] [--limit COUNT] [--no-header] [--json]
+      rmd list [--list NAME ...] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed|--done] [--completed-from|--done-from DATE] [--completed-to|--done-to DATE] [--limit COUNT] [--no-header] [--json]
       rmd show ID [--json]
       rmd add TITLE [--list NAME] [--due DATE] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
       rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]

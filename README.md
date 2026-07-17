@@ -25,10 +25,10 @@ rmd list --next 7
 rmd list --due-from "2026-06-18"
 rmd list --due-to "2026-06-30"
 rmd list --due-from "2026-06-18" --due-to "2026-06-30"
-rmd list --completed
-rmd list --completed --yesterday
-rmd list --completed --today
-rmd list --completed-from "2026-06-01" --completed-to "2026-06-18"
+rmd list --done
+rmd list --done --yesterday
+rmd list --done --today
+rmd list --done-from "2026-06-01" --done-to "2026-06-18"
 rmd list --limit 10
 rmd list --no-header
 rmd list --json
@@ -92,7 +92,9 @@ supported by the Japanese calendar, such as `平成` and `昭和`, are also acce
 A date-only upper bound, such as `--due-to "2026-06-30"` or
 `--due-to "令和8年6月30日"`, includes the whole day. Relative filters like
 `--yesterday`, `--today`, and `--tomorrow` apply to due dates by default, and to
-completion dates when combined with `--completed`.
+completion dates when combined with `--done`. `--completed`,
+`--completed-from`, and `--completed-to` remain available as aliases for
+`--done`, `--done-from`, and `--done-to`.
 
 Use `--limit COUNT` to print only the first COUNT reminders after filtering and
 sorting.
