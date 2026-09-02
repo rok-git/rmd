@@ -45,6 +45,8 @@ rmd show <reminder-id> --json
 ```sh
 rmd add "牛乳を買う"
 rmd add "牛乳を買う" --due "2026-06-18 18:00" --list "買い物" --note "低脂肪"
+rmd add "牛乳を買う" --due 今日
+rmd add "牛乳を買う" --due tomorrow
 rmd add "牛乳を買う" --verbose
 
 rmd edit <reminder-id> --title "牛乳と卵を買う"
@@ -94,7 +96,8 @@ JSON で受け取りたい場合は `--json` を使います。
 ## 日付
 
 日付は `yyyy-MM-dd`、`yyyy-MM-dd HH:mm`、`yyyy年M月d日`、
-`yyyy年M月d日 HH:mm`、`令和y年M月d日`、`令和y年M月d日 HH:mm` で指定できます。
+`yyyy年M月d日 HH:mm`、`令和y年M月d日`、`令和y年M月d日 HH:mm`、`yesterday`、
+`today`、`tomorrow`、`昨日`、`今日`、`明日` で指定できます。
 日本の暦で扱える `平成` や `昭和` などの年号も使えます。
 
 `--due-to "2026-06-30"` や `--done-to "2026-06-30"` のように日付だけを

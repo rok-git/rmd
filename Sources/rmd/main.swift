@@ -47,7 +47,7 @@ enum CLIError: LocalizedError {
         case .noDefaultReminderList:
             return "No default reminder list is configured."
         case let .invalidDate(value):
-            return "Invalid date: \(value). Use yyyy-MM-dd, yyyy-MM-dd HH:mm, yyyy年M月d日, or 令和y年M月d日."
+            return "Invalid date: \(value). Use yyyy-MM-dd, yyyy-MM-dd HH:mm, yyyy年M月d日, 令和y年M月d日, today, tomorrow, 今日, or 明日."
         case let .invalidLimit(value):
             return "Invalid limit: \(value). Use a positive integer."
         case let .accessDenied(reason):
@@ -708,6 +708,9 @@ enum DateParsers {
     }
 
     static func parse(_ value: String) -> ParsedDate? {
+        if let date = relativeDate(value) {
+            return ParsedDate(date: date, includesTime: false)
+        }
         for formatter in dateTimeFormatters {
             if let date = formatter.date(from: value) {
                 return ParsedDate(date: date, includesTime: true)
@@ -719,6 +722,25 @@ enum DateParsers {
             }
         }
         return nil
+    }
+
+    private static func relativeDate(_ value: String) -> Date? {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let dayOffset: Int
+        switch normalized {
+        case "yesterday", "昨日":
+            dayOffset = -1
+        case "today", "今日":
+            dayOffset = 0
+        case "tomorrow", "明日":
+            dayOffset = 1
+        default:
+            return nil
+        }
+
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        return calendar.date(byAdding: .day, value: dayOffset, to: startOfToday)
     }
 
     private static let dateTimeFormatters: [DateFormatter] = [

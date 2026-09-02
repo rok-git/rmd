@@ -46,6 +46,8 @@ Create and edit reminders:
 ```sh
 rmd add "Buy milk"
 rmd add "Buy milk" --due "2026-06-18 18:00" --list "Shopping" --note "Low fat"
+rmd add "Buy milk" --due today
+rmd add "Buy milk" --due tomorrow
 rmd add "Buy milk" --verbose
 
 rmd edit <reminder-id> --title "Buy milk and eggs"
@@ -87,7 +89,8 @@ line from human-readable output.
 reminder is removed. Answer `y` or `yes` to delete; any other answer skips it.
 
 Date values use `yyyy-MM-dd`, `yyyy-MM-dd HH:mm`, `yyyy年M月d日`,
-`yyyy年M月d日 HH:mm`, `令和y年M月d日`, or `令和y年M月d日 HH:mm`. Era names
+`yyyy年M月d日 HH:mm`, `令和y年M月d日`, `令和y年M月d日 HH:mm`, `yesterday`,
+`today`, or `tomorrow`. `昨日`, `今日`, and `明日` are also accepted. Era names
 supported by the Japanese calendar, such as `平成` and `昭和`, are also accepted.
 A date-only upper bound, such as `--due-to "2026-06-30"` or
 `--due-to "令和8年6月30日"`, includes the whole day. Relative filters like
