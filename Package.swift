@@ -11,6 +11,7 @@ let package = Package(
         .executable(name: "rmd", targets: ["rmd"])
     ],
     targets: [
-        .executableTarget(name: "rmd")
+        .executableTarget(name: "rmd"),
+        .testTarget(name: "rmdTests", dependencies: ["rmd"])
     ]
 )

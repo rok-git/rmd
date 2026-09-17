@@ -225,7 +225,11 @@ struct ReminderStore {
                 calendars: calendars
             )
         }
-        let records = try await reminderRecords(matching: predicate)
+        let records = try await reminderRecords(
+            matching: predicate,
+            dueFrom: options.completed ? options.dueFrom : nil,
+            dueTo: options.completed ? options.dueTo : nil
+        )
         if let limit = options.limit {
             return Array(records.prefix(limit))
         }
@@ -352,10 +356,11 @@ struct ReminderStore {
         }
     }
 
-    private func reminderRecords(matching predicate: NSPredicate, identifierPrefix: String? = nil) async throws -> [ReminderRecord] {
+    private func reminderRecords(matching predicate: NSPredicate, identifierPrefix: String? = nil, dueFrom: Date? = nil, dueTo: Date? = nil) async throws -> [ReminderRecord] {
         try await withCheckedThrowingContinuation { continuation in
             eventStore.fetchReminders(matching: predicate) { reminders in
                 let records = (reminders ?? [])
+                    .filter { matchesDueDateRange($0.dueDateComponents, from: dueFrom, to: dueTo) }
                     .filter { reminder in
                         guard let identifierPrefix else {
                             return true
@@ -784,6 +789,23 @@ func parseDateBoundary(_ value: String, isEnd: Bool) throws -> Date {
         return parsedDate.date
     }
     throw CLIError.invalidDate(value)
+}
+
+func matchesDueDateRange(_ components: DateComponents?, from start: Date?, to end: Date?) -> Bool {
+    guard start != nil || end != nil else {
+        return true
+    }
+    guard let due = components?.date else {
+        return false
+    }
+    if let start, due < start {
+        return false
+    }
+    // Date-only upper bounds are normalized to the start of the following day.
+    if let end, due >= end {
+        return false
+    }
+    return true
 }
 
 func makeDueDateRange(_ options: ListOptions) -> (start: Date?, end: Date?) {

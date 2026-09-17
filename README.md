@@ -99,6 +99,12 @@ completion dates when combined with `--done`. `--completed`,
 `--completed-from`, and `--completed-to` remain available as aliases for
 `--done`, `--done-from`, and `--done-to`.
 
+`--due-from` and `--due-to` also filter due dates when used with `--done`.
+When combined with completion-date filters, reminders must satisfy both ranges.
+Reminders without a due date are excluded when either due-date bound is specified.
+For example, `rmd list --done --today --due-to "2026-06-30"` shows reminders
+completed today whose due dates are on or before June 30, 2026.
+
 Use `--limit COUNT` to print only the first COUNT reminders after filtering and
 sorting.
 
