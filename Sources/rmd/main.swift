@@ -277,6 +277,9 @@ struct ReminderStore {
 
     func setCompleted(_ completed: Bool, identifier: String) async throws -> ReminderRecord {
         let reminder = try await reminder(identifier: identifier)
+        guard reminder.isCompleted != completed else {
+            return makeRecord(reminder)
+        }
         reminder.isCompleted = completed
         if completed {
             reminder.completionDate = Date()
