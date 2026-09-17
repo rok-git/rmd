@@ -105,6 +105,14 @@ sorting.
 By default, `rmd list` searches all reminder lists. Repeat `--list NAME` to
 limit output to multiple specific lists.
 
+**Caution about duplicate list names:** `--list NAME` and `RMD_DEFAULT_LIST`
+select lists by name only, without distinguishing accounts. If multiple lists
+have the same name, rmd uses the first match returned by EventKit. As a result,
+`list --list NAME` may omit reminders from another matching list, and `add` or
+`edit --list NAME` may save to an unintended list. Give lists distinct names
+across the accounts enabled for Reminders on this Mac before selecting them by
+name. Selecting a list by account or list ID is not currently supported.
+
 If `rmd add` is run without `--list`, `RMD_DEFAULT_LIST` can select the target
 list:
 
