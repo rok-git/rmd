@@ -53,6 +53,7 @@ rmd add "Buy milk" --verbose
 rmd edit <reminder-id> --title "Buy milk and eggs"
 rmd edit <reminder-id> --due "2026-06-19 09:00"
 rmd edit <reminder-id> --clear-due
+rmd edit <reminder-id> --done-at "2026-09-28 18:30"
 ```
 
 Delete, complete, or reopen reminders:
@@ -64,8 +65,16 @@ rmd delete <reminder-id> --verbose
 
 rmd done <reminder-id>
 rmd done <reminder-id> --verbose
+rmd done <reminder-id> --done-at "2026-09-28 18:30"
 rmd undone <reminder-id>
 ```
+
+`edit --done-at DATE` corrects the completion date of an already completed
+reminder; incomplete reminders produce an error. `done --done-at DATE` completes
+a reminder at the specified time, or corrects its date if already completed.
+Without `--done-at`, `done` leaves an already completed reminder unchanged.
+The existing Gregorian, Japanese era, and relative date formats are accepted.
+A date without a time (including `yesterday`) means midnight in the local time zone.
 
 List reminder lists:
 

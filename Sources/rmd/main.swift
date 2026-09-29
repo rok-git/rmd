@@ -14,6 +14,7 @@ enum CLIError: LocalizedError {
     case listNotFound(String)
     case noDefaultReminderList
     case invalidDate(String)
+    case reminderNotCompleted
     case invalidLimit(String)
     case accessDenied(String)
     case eventKit(String)
@@ -48,6 +49,8 @@ enum CLIError: LocalizedError {
             return "No default reminder list is configured."
         case let .invalidDate(value):
             return "Invalid date: \(value). Use yyyy-MM-dd, yyyy-MM-dd HH:mm, yyyy年M月d日, 令和y年M月d日, today, tomorrow, 今日, or 明日."
+        case .reminderNotCompleted:
+            return "Cannot edit the completion date of an incomplete reminder. Use done --done-at instead."
         case let .invalidLimit(value):
             return "Invalid limit: \(value). Use a positive integer."
         case let .accessDenied(reason):
@@ -104,6 +107,7 @@ struct AddOptions {
 
 struct EditOptions {
     var identifier: String
+    var doneAt: Date?
     var title: String?
     var listName: String?
     var due: DateComponents?
@@ -121,7 +125,7 @@ enum Command {
     case add(AddOptions)
     case edit(EditOptions)
     case delete([String], json: Bool, verbose: Bool)
-    case done(String, json: Bool, verbose: Bool)
+    case done(String, doneAt: Date?, json: Bool, verbose: Bool)
     case undone(String, json: Bool, verbose: Bool)
     case lists(json: Bool, noHeader: Bool)
     case help
@@ -163,8 +167,8 @@ struct RMD {
                     }
                 }
                 printDeleted(deletedRecords, json: json, verbose: verbose)
-            case let .done(identifier, json, verbose):
-                let record = try await ReminderStore(eventStore: store).setCompleted(true, identifier: identifier)
+            case let .done(identifier, doneAt, json, verbose):
+                let record = try await ReminderStore(eventStore: store).setCompleted(true, identifier: identifier, doneAt: doneAt)
                 printMutation(record, json: json, verbose: verbose)
             case let .undone(identifier, json, verbose):
                 let record = try await ReminderStore(eventStore: store).setCompleted(false, identifier: identifier)
@@ -256,6 +260,10 @@ struct ReminderStore {
 
     func edit(_ options: EditOptions) async throws -> ReminderRecord {
         let reminder = try await reminder(identifier: options.identifier)
+        if let doneAt = options.doneAt {
+            guard reminder.isCompleted else { throw CLIError.reminderNotCompleted }
+            reminder.completionDate = doneAt
+        }
         if let title = options.title {
             reminder.title = title
         }
@@ -279,14 +287,14 @@ struct ReminderStore {
         return makeRecord(reminder)
     }
 
-    func setCompleted(_ completed: Bool, identifier: String) async throws -> ReminderRecord {
+    func setCompleted(_ completed: Bool, identifier: String, doneAt: Date? = nil) async throws -> ReminderRecord {
         let reminder = try await reminder(identifier: identifier)
-        guard reminder.isCompleted != completed else {
+        guard reminder.isCompleted != completed || doneAt != nil else {
             return makeRecord(reminder)
         }
         reminder.isCompleted = completed
         if completed {
-            reminder.completionDate = Date()
+            reminder.completionDate = doneAt ?? Date()
         } else {
             reminder.completionDate = nil
         }
@@ -533,6 +541,8 @@ func parseCommand(_ arguments: [String]) throws -> Command {
         var options = EditOptions(identifier: identifier)
         while let argument = parser.next() {
             switch argument {
+            case "--done-at":
+                options.doneAt = try parseCompletionDate(try parser.requireValue(for: argument))
             case "--title":
                 options.title = try parser.requireValue(for: argument)
             case "--list":
@@ -559,7 +569,22 @@ func parseCommand(_ arguments: [String]) throws -> Command {
     case "delete":
         return .delete(try parseIdentifiersAndFlags(&parser), json: parser.seenJSON, verbose: parser.seenVerbose)
     case "done":
-        return .done(try parseIdentifierAndFlags(&parser), json: parser.seenJSON, verbose: parser.seenVerbose)
+        guard let identifier = parser.next(), !identifier.hasPrefix("--") else {
+            throw CLIError.missingIdentifier
+        }
+        try validateIdentifierInput(identifier)
+        var doneAt: Date?
+        while let argument = parser.next() {
+            switch argument {
+            case "--done-at":
+                doneAt = try parseCompletionDate(try parser.requireValue(for: argument))
+            case "--json", "-v", "--verbose":
+                continue
+            default:
+                throw CLIError.unexpectedArgument(argument)
+            }
+        }
+        return .done(identifier, doneAt: doneAt, json: parser.seenJSON, verbose: parser.seenVerbose)
     case "undone":
         return .undone(try parseIdentifierAndFlags(&parser), json: parser.seenJSON, verbose: parser.seenVerbose)
     case "lists":
@@ -694,6 +719,11 @@ func parseLimit(_ value: String) throws -> Int {
         throw CLIError.invalidLimit(value)
     }
     return limit
+}
+
+func parseCompletionDate(_ value: String) throws -> Date {
+    guard let parsed = DateParsers.parse(value) else { throw CLIError.invalidDate(value) }
+    return parsed.includesTime ? parsed.date : Calendar.current.startOfDay(for: parsed.date)
 }
 
 func parseDateComponents(_ value: String) throws -> DateComponents {
@@ -1030,9 +1060,9 @@ func printHelp(to file: UnsafeMutablePointer<FILE> = stdout) {
       rmd list [--list NAME ...] [--yesterday | --today | --tomorrow | --overdue | --next DAYS | --due-from DATE | --due-to DATE] [--completed|--done] [--completed-from|--done-from DATE] [--completed-to|--done-to DATE] [--limit COUNT] [--no-header] [--json]
       rmd show ID [--json]
       rmd add TITLE [--list NAME] [--due DATE] [--note TEXT] [--priority 0-9] [--json] [-v|--verbose]
-      rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]
+      rmd edit ID [--title TEXT] [--list NAME] [--due DATE] [--clear-due] [--done-at DATE] [--note TEXT] [--clear-note] [--priority 0-9] [--json] [-v|--verbose]
       rmd delete ID... [--json] [-v|--verbose]
-      rmd done ID [--json] [-v|--verbose]
+      rmd done ID [--done-at DATE] [--json] [-v|--verbose]
       rmd undone ID [--json] [-v|--verbose]
       rmd lists [--no-header] [--json]
       rmd help

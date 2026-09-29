@@ -52,6 +52,7 @@ rmd add "牛乳を買う" --verbose
 rmd edit <reminder-id> --title "牛乳と卵を買う"
 rmd edit <reminder-id> --due "2026-06-19 09:00"
 rmd edit <reminder-id> --clear-due
+rmd edit <reminder-id> --done-at "2026-09-28 18:30"
 ```
 
 リマインダーを削除、完了、または未完了に戻します。
@@ -63,8 +64,16 @@ rmd delete <reminder-id> --verbose
 
 rmd done <reminder-id>
 rmd done <reminder-id> --verbose
+rmd done <reminder-id> --done-at "2026-09-28 18:30"
 rmd undone <reminder-id>
 ```
+
+`edit --done-at DATE` は完了済みリマインダーの完了日時を訂正します。
+未完了の項目に指定するとエラーになります。`done --done-at DATE` は指定日時で
+完了にし、すでに完了済みの場合は完了日時を訂正します。
+`--done-at` のない `done` は、すでに完了済みの項目を変更しません。
+西暦・和暦・相対日付など、既存の日付形式を使用できます。
+時刻を省略した場合（`昨日` なども含む）は、ローカル時間の午前0時になります。
 
 リストを表示します。
 
